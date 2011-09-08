@@ -1,0 +1,187 @@
+module(Hummus):
+  data(Value):
+    Applicative(@combiner)
+    Constant(@which)
+    Environment(@map = Hash new, @parents = [])
+    Null
+    Number(@value)
+    Operative(@formals, @environment, @body, @static-environment = nil):
+      Core(@thunk)
+    Pair(@car, @cdr, @immutable? = false)
+    String(@value)
+    Symbol(@name)
+
+
+  True = Constant new(#t)
+  False = Constant new(#f)
+  Ignore = Constant new(#ignore)
+  Inert = Constant new(#inert)
+
+  (a: Applicative) == (b: Applicative) :=
+    a combiner == b combiner
+  (a: Environment) == (b: Environment) :=
+    a map == b map && a parents == b parents
+  (a: Operative) == (b: Operative) :=
+    a formals == b formals &&
+      a environment == b environment &&
+      a body == b body &&
+      a static-environment == b static-environment
+  (a: Pair) == (b: Pair) :=
+    a car == b car && a cdr == b cdr
+  (a: Value) == (b: Value) := a equal?(b)
+
+  (a: Constant) equal?(b: Constant) := a which equal?(b which)
+  Null equal?(Null) := true
+  (a: Number) equal?(b: Number) := a value equal?(b value)
+  (a: String) equal?(b: String) := a value equal?(b value)
+  (a: Symbol) equal?(b: Symbol) := a name equal?(b name)
+
+  { True } true? := true
+  Value true? := false
+
+  { False } false? := true
+  Value false? := false
+
+  { Ignore } ignore? := true
+  Value ignore? := false
+
+  { Inert } inert? := true
+  Value inert? := false
+
+  Core apply(args, from) := @thunk call(args, from)
+  Operative apply(args, from) := do:
+    env = Environment new(Hash new, [@static-environment])
+
+    env define(@formals, args)
+    env define(@environment, from)
+
+    @body evaluate-in(env)
+
+  Pair cons(x) := Hummus::Pair new(x, self)
+
+  Pair pair? := true
+  Value pair? := false
+
+  Null null? := true
+  Value null? := false
+
+  Environment environment? := true
+  Value environment? := false
+
+  Symbol symbol? := true
+  Value symbol? := false
+
+  Operative operative? := true
+  Value operative? := false
+
+  Applicative applicative? := true
+  Value applicative? := false
+
+  Environment define(k, v) :=
+    condition:
+      -- this should only happen internally
+      k is-a?(::Symbol) -> do:
+        @map[k] = v
+        nil
+
+      k ignore? ->
+        nil
+
+      k symbol? -> do:
+        @map[k name] = v
+        nil
+
+      k null? -> do:
+        unless(v null?):
+          error(#mismatch(k, v))
+
+      k pair? -> do:
+        unless(v pair?):
+          error(#mismatch(k, v))
+
+        define(k car, v car)
+        define(k cdr, v cdr)
+
+
+  Environment fetch(what) :=
+    @map[what] || @parents collect(&#fetch(what)) reject(&#nil?) head
+
+
+  Null evaluate-all-in(_) := self
+  Pair evaluate-all-in(env) :=
+    Pair new(@car evaluate-in(env), @cdr evaluate-all-in(env))
+
+
+  Null to-list := []
+  Pair to-list := @cdr to-list cons(@car)
+
+
+  Pair evaluate-in(env: Environment) := do:
+    x = @car evaluate-in(env)
+    
+    condition:
+      x operative? ->
+        x apply(@cdr, env)
+
+      x applicative? ->
+        x combiner apply(@cdr evaluate-all-in(env), env)
+
+      otherwise ->
+        error(#bad-form(self))
+  Symbol evaluate-in(env: Environment) := env fetch(@name) || error(#undefined(@name))
+  Operative evaluate-in(env: Environment) := do:
+    @static-environment ||= env
+    self
+  Value evaluate-in(Environment) := self
+
+  Applicative pretty := doc: text("<applicative>")
+  Constant pretty := @which pretty
+  Environment pretty := doc:
+    text("<environment") <+>
+      hsep(@map keys to-list collect [x]: Hummus::Symbol new(x) pretty) <>
+    text(">")
+  Null pretty := doc: text("()")
+  Number pretty := @value pretty
+  Operative pretty := doc: text("<operative>")
+  Pair pretty := doc:
+    condition:
+      @cdr null? ->
+        parens(@car pretty)
+
+      @cdr pair? ->
+        parens(@car pretty <+> @cdr inner-pretty)
+
+      otherwise:
+        parens(@car pretty <+> text(".") <+> @cdr pretty)
+  String pretty := @value pretty
+  Symbol pretty := doc: text(@name to-s)
+
+  Pair inner-pretty := doc:
+    condition:
+      @cdr null? ->
+        @car pretty
+
+      @cdr pair? ->
+        @car pretty <+> @cdr inner-pretty
+
+      otherwise:
+        @car pretty <+> text(".") <+> @cdr pretty
+
+  Pair copy-es-immutable :=
+    Pair new(@car copy-es-immutable, @cdr copy-es-immutable, true)
+
+  Value copy-es-immutable := self
+
+  true to-kernel := Hummus::True
+  false to-kernel := Hummus::False
+  Numeric to-kernel := Hummus::Number new(self)
+  ::String to-kernel := Hummus::String new(self)
+  ::Symbol to-kernel := Hummus::Symbol new(self)
+
+  class(<< self):
+    evaluate-all(env, exprs) := do:
+      res = nil
+      exprs each [e]:
+        res =! e evaluate-in(env)
+
+      res

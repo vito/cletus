@@ -1,0 +1,115 @@
+(define sequence
+  ((wrap
+     (vau (seq2) #ignore
+          (seq2
+            (define aux
+              (vau (head . tail) env
+                   (if (null? tail)
+                     (eval head env)
+                     (seq2
+                       (eval head env)
+                       (eval (cons aux tail) env)))))
+            (vau body env
+                 (if (null? body)
+                   #inert
+                   (eval (cons aux body) env))))))
+   (vau (first second) env
+        ((wrap (vau #ignore #ignore (eval second env)))
+         (eval first env)))))
+
+(define list (wrap (vau x #ignore x)))
+
+(define list*
+  (wrap
+    (vau args #ignore
+         (sequence
+           (define aux
+             (wrap
+               (vau ((head . tail)) #ignore
+                    (if (null? tail)
+                      head
+                      (cons head (aux tail))))))
+           (aux args)))))
+
+(define lambda
+  (vau (formals . body) env
+       (wrap (eval (list* vau formals #ignore body) env))))
+
+(define vau
+  ((wrap
+     (vau (vau) #ignore
+          (vau (formals eformal . body) env
+               (eval (list vau formals eformal
+                           (cons sequence body)) env))))
+   vau))
+
+(define car (lambda ((x . #ignore)) x))
+(define cdr (lambda ((#ignore . x)) x))
+
+(define apply
+  (lambda (appv arg . opt)
+    (eval (cons (unwrap appv) arg)
+          (if (null? opt)
+            (make-environment)
+            (car opt)))))
+
+(define cond
+  (vau clauses env
+       (define aux
+         (lambda ((test . body) . clauses)
+           (if (eval test env)
+             (apply (wrap sequence) body env)
+             (apply (wrap cond) clauses env))))
+       (if (null? clauses) #inert
+         (apply aux clauses))))
+
+(define get-list-metrics
+  (lambda (ls)
+    (define aux
+      (lambda (kth k nth n)
+        (if (>=? k n)
+          (if (pair? (cdr nth))
+            (aux ls 0 (cdr nth) (+ n 1))
+            (list (+ n 1)
+                  (if (null? (cdr nth)) 1 0) (+ n 1)
+                  0))
+          (if (eq? kth nth)
+            (list n 0 k (- n k))
+            (aux (cdr kth) (+ k 1) nth n)))))
+    (if (pair? ls)
+      (aux ls 0 ls 0)
+      (list 0 (if (null? ls) 1 0) 0 0))))
+
+(define list-tail
+  (lambda (ls k)
+    (if (>? k 0)
+      (list-tail (cdr ls) (- k 1))
+      ls)))
+
+(define <?
+  (lambda (a b)
+    (send to_kernel (send < (send value a) (send value b)))))
+
+(define >?
+  (lambda (a b)
+    (send to_kernel (send > (send value a) (send value b)))))
+
+(define >=?
+  (lambda (a b)
+    (send to_kernel (send >= (send value a) (send value b)))))
+
+(define <=?
+  (lambda (a b)
+    (send to_kernel (send <= (send value a) (send value b)))))
+
+(define +
+  (lambda (a b)
+    (send to_kernel (send + (send value a) (send value b)))))
+
+(define -
+  (lambda (a b)
+    (send to_kernel (send - (send value a) (send value b)))))
+
+(define *
+  (lambda (a b)
+    (send to_kernel (send * (send value a) (send value b)))))

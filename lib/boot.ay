@@ -1,0 +1,229 @@
+env = Hummus::Environment new
+
+env define(#print) $:
+  Hummus::Core new $:
+    [args, env]:
+      val = args car
+      val evaluate-in(env) write
+
+env define(#send) $:
+  Hummus::Core new $:
+    [args, env]:
+      message = args car name
+      target = args cdr car evaluate-in(env)
+      rest = args cdr cdr evaluate-all-in(env) to-list
+      target send(message, *rest)
+
+env define(#boolean?) $:
+  Hummus::Core new $:
+    [args, env]:
+      val = args car evaluate-in(env)
+
+      if(val == Hummus::True || val == Hummus::False)
+        then: Hummus::True
+        else: Hummus::False
+
+env define(#eq?) $:
+  Hummus::Core new $:
+    [args, env]:
+      a = args car evaluate-in(env)
+      b = args cdr car evaluate-in(env)
+
+      if(a equal?(b))
+        then: Hummus::True
+        else: Hummus::False
+
+env define(#equal?) $:
+  Hummus::Core new $:
+    [args, env]:
+      a = args car evaluate-in(env)
+      b = args cdr car evaluate-in(env)
+
+      if(a == b)
+        then: Hummus::True
+        else: Hummus::False
+
+env define(#symbol?) $:
+  Hummus::Core new $:
+    [args, env]:
+      val = args car evaluate-in(env)
+
+      if(val symbol?)
+        then: Hummus::True
+        else: Hummus::False
+
+env define(#inert?) $:
+  Hummus::Core new $:
+    [args, env]:
+      val = args car evaluate-in(env)
+
+      if(val inert?)
+        then: Hummus::True
+        else: Hummus::False
+
+env define(#pair?) $:
+  Hummus::Core new $:
+    [args, env]:
+      val = args car evaluate-in(env)
+
+      if(val pair?)
+        then: Hummus::True
+        else: Hummus::False
+
+env define(#null?) $:
+  Hummus::Core new $:
+    [args, env]:
+      val = args car evaluate-in(env)
+
+      if(val null?)
+        then: Hummus::True
+        else: Hummus::False
+
+env define(#cons) $:
+  Hummus::Core new $:
+    [args, env]:
+      a = args car evaluate-in(env)
+      b = args cdr car evaluate-in(env)
+      Hummus::Pair new(a, b)
+
+env define(#"set-car!") $:
+  Hummus::Core new $:
+    [args, env]:
+      a = args car evaluate-in(env)
+      b = args cdr car evaluate-in(env)
+
+      when(a immutable?):
+        error(#cannot-mutate(a))
+
+      a car = b
+      Hummus::Inert
+
+env define(#"set-cdr!") $:
+  Hummus::Core new $:
+    [args, env]:
+      a = args car evaluate-in(env)
+      b = args cdr car evaluate-in(env)
+
+      when(a immutable?):
+        error(#cannot-mutate(a))
+
+      a cdr = b
+      Hummus::Inert
+
+env define(#"copy-es-immutable") $:
+  Hummus::Core new $:
+    [args, env]:
+      args car evaluate-in(env) copy-es-immutable
+
+env define(#if) $:
+  Hummus::Core new $:
+    [args, env]:
+      cond = args car evaluate-in(env)
+      consequent = args cdr car
+      alternative = args cdr cdr car
+
+      condition:
+        cond == Hummus::True ->
+          consequent evaluate-in(env)
+
+        cond == Hummus::False ->
+          alternative evaluate-in(env)
+
+        _ -> error(#not-boolean(cond))
+
+env define(#environment?) $:
+  Hummus::Core new $:
+    [args, env]:
+      val = args car evaluate-in(env)
+
+      if(val environment?)
+        then: Hummus::True
+        else: Hummus::False
+
+env define(#ignore?) $:
+  Hummus::Core new $:
+    [args, env]:
+      val = args car evaluate-in(env)
+
+      if(val ignore?)
+        then: Hummus::True
+        else: Hummus::False
+
+env define(#eval) $:
+  Hummus::Core new $:
+    [args, env]:
+      val = args car
+      in = args cdr car
+      val evaluate-in(env) evaluate-in(in evaluate-in(env))
+
+env define(#"make-environment") $:
+  Hummus::Core new $:
+    [args, env]:
+      parents = Hummus evaluate-all(env, args to-list)
+      Hummus::Environment new(Hash new, parents)
+
+env define(#define) $:
+  Hummus::Core new $:
+    [args, env]:
+      key = args car
+      val = args cdr car evaluate-in(env)
+      env define(key, val)
+      Hummus::Inert
+
+env define(#operative?) $:
+  Hummus::Core new $:
+    [args, env]:
+      val = args car evaluate-in(env)
+
+      if(val operative?)
+        then: Hummus::True
+        else: Hummus::False
+
+env define(#applicative?) $:
+  Hummus::Core new $:
+    [args, env]:
+      val = args car evaluate-in(env)
+
+      if(val applicative?)
+        then: Hummus::True
+        else: Hummus::False
+
+env define(#vau) $:
+  Hummus::Core new $:
+    [args, env]:
+      formals = args car
+      eformal = args cdr car
+      body = args cdr cdr car
+
+      Hummus::Operative new(
+        formals copy-es-immutable
+        eformal
+        body copy-es-immutable
+        env
+      )
+
+env define(#wrap) $:
+  Hummus::Core new $:
+    [args, env]:
+      combiner = args car
+      Hummus::Applicative new(combiner evaluate-in(env))
+
+env define(#unwrap) $:
+  Hummus::Core new $:
+    [args, env]:
+      x = args car evaluate-in(env)
+
+      unless(x applicative?):
+        error(#not-an-applicative(x))
+
+      x combiner
+
+
+base = File expand-path("../../", _FILE)
+Hummus evaluate-all(env, Hummus::Parser parse-file(base + "/kernel/boot.knl"))
+
+{ repl } bind:
+  #input(source) -> doc:
+    res = Hummus evaluate-all(env, Hummus::Parser parse-string(source))
+    (text(" =>") <+> res pretty) render(76) println
+    restart(#override)

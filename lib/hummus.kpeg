@@ -1,0 +1,112 @@
+%% name = Hummus::Parser
+
+              - = (comment | /\s/)*
+
+     identifier = < /[\p{L}\p{S}\d!@#%&*\-\\:.\/\?_]+/u > { text }
+
+        comment = /;.*?$/
+
+     expression = number
+                | string
+                | constant
+                | symbol
+                | list
+
+         number = < /[\+\-]?0[oO][0-7]+/ >
+                    { Hummus::Number.new(text.to_i(8)) }
+                | < /[\+\-]?0[xX][\da-fA-F]+/ >
+                    { Hummus::Number.new(text.to_i(16)) }
+                | < /[\+\-]?\d+(\.\d+)?[eE][\+\-]?\d+/ >
+                    { Hummus::Number.new(text.to_f) }
+                | < /[\+\-]?\d+\.\d+/ >
+                    { Hummus::Number.new(text.to_f) }
+                | < /[\+\-]?\d+/ >
+                    { Hummus::Number.new(text.to_i) }
+
+         escape = number_escapes | escapes
+        str_seq = < /[^\\"]+/ > { text }
+         string = "\"" < (("\\" escape) | str_seq)*:c > "\""
+                    { Hummus::String.new(text.gsub("\\\"", "\"")) }
+
+         symbol = identifier:n
+                    { Hummus::Symbol.new(n.to_sym) }
+
+       constant = "#t"
+                    { Hummus::True }
+                | "#f"
+                    { Hummus::False }
+                | "#ignore"
+                    { Hummus::Ignore }
+                | "#inert"
+                    { Hummus::Inert }
+
+           list = "(" - pairs:ps - ")" { ps }
+
+          pairs = expression:a - "." - expression:b
+                    { Hummus::Pair.new(a, b) }
+                | pairs:a - "." - expression:b
+                    { Hummus::Pair.new(a, b) }
+                | expression:a - pairs:b
+                    { Hummus::Pair.new(a, b) }
+                | expression:a
+                    { Hummus::Pair.new(a, Hummus::Null.new) }
+                | { Hummus::Null.new }
+
+
+        escapes = "n" { "\n" }
+                | "s" { " " }
+                | "r" { "\r" }
+                | "t" { "\t" }
+                | "v" { "\v" }
+                | "f" { "\f" }
+                | "b" { "\b" }
+                | "a" { "\a" }
+                | "e" { "\e" }
+                | "\\" { "\\" }
+                | "\"" { "\"" }
+                | "BS" { "\b" }
+                | "HT" { "\t" }
+                | "LF" { "\n" }
+                | "VT" { "\v" }
+                | "FF" { "\f" }
+                | "CR" { "\r" }
+                | "SO" { "\016" }
+                | "SI" { "\017" }
+                | "EM" { "\031" }
+                | "FS" { "\034" }
+                | "GS" { "\035" }
+                | "RS" { "\036" }
+                | "US" { "\037" }
+                | "SP" { " " }
+                | "NUL" { "\000" }
+                | "SOH" { "\001" }
+                | "STX" { "\002" }
+                | "ETX" { "\003" }
+                | "EOT" { "\004" }
+                | "ENQ" { "\005" }
+                | "ACK" { "\006" }
+                | "BEL" { "\a" }
+                | "DLE" { "\020" }
+                | "DC1" { "\021" }
+                | "DC2" { "\022" }
+                | "DC3" { "\023" }
+                | "DC4" { "\024" }
+                | "NAK" { "\025" }
+                | "SYN" { "\026" }
+                | "ETB" { "\027" }
+                | "CAN" { "\030" }
+                | "SUB" { "\032" }
+                | "ESC" { "\e" }
+                | "DEL" { "\177" }
+                | < . > { "\\" + text }
+
+ number_escapes = /[xX]/ < /[0-9a-fA-F]{1,5}/ > { [text.to_i(16)].pack("U") }
+                | < /\d{1,6}/ > { [text.to_i].pack("U") }
+                | /[oO]/ < /[0-7]{1,7}/ > { [text.to_i(16)].pack("U") }
+                | /[uU]/ < /[0-9a-fA-F]{4}/ > { [text.to_i(16)].pack("U") }
+
+
+    expressions = expression:e (- expression)*:es
+                    { [e] + Array(es).to_list }
+
+           root = - expressions:es - !. { Array(es).to_list }

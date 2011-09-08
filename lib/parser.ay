@@ -1,0 +1,17 @@
+base = File expand-path("../", _FILE)
+
+require(base + "/hummus.kpeg.rb")
+
+module(Hummus):
+  class(Parser):
+    class(<< self):
+      parse-string(source) := do:
+        p = new(source)
+
+        unless(p parse):
+          p raise-error
+
+        p result
+
+      parse-file(name) :=
+        parse-string(File open(name, "rb") read)
